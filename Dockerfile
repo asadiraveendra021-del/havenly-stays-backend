@@ -1,5 +1,5 @@
 # ===== Build Stage =====
-FROM gradle:8.5-jdk17 AS builder
+FROM gradle:8.14-jdk17 AS builder
 WORKDIR /app
 COPY . .
 RUN gradle build -x test
