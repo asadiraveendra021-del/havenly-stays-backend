@@ -3,10 +3,13 @@ package com.asadi.havenly_stays.config;
 import com.asadi.havenly_stays.entity.Facility;
 import com.asadi.havenly_stays.repository.FacilityRepository;
 import java.util.List;
+
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod")   // ✅ THIS FIXES YOUR ISSUE
 public class FacilitySeedConfig implements CommandLineRunner {
 
     private final FacilityRepository facilityRepository;
