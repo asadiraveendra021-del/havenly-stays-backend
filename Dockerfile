@@ -9,4 +9,4 @@ RUN ./gradlew build -x test
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "java -Dserver.port=$PORT -jar build/libs/havenly-stays-0.0.1-SNAPSHOT.jar"]
+CMD ["sh", "-c", "java -Dserver.port=${PORT:-8080} -jar build/libs/havenly-stays-0.0.1-SNAPSHOT.jar"]
