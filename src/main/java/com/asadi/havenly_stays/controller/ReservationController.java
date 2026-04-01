@@ -1,15 +1,19 @@
 package com.asadi.havenly_stays.controller;
 
-import com.asadi.havenly_stays.dto.ReservationPreBookRequest;
+import com.asadi.havenly_stays.dto.ReservationItemResponse;
+import com.asadi.havenly_stays.dto.ReservationRequest;
 import com.asadi.havenly_stays.dto.ReservationResponse;
 import com.asadi.havenly_stays.entity.MealPlan;
+import com.asadi.havenly_stays.entity.MealPlanName;
 import com.asadi.havenly_stays.entity.Reservation;
+import com.asadi.havenly_stays.entity.ReservationItem;
 import com.asadi.havenly_stays.service.MealPlanService;
 import com.asadi.havenly_stays.service.ReservationService;
 import com.asadi.havenly_stays.util.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,14 +39,8 @@ public class ReservationController {
 
     @PostMapping("/pre-book")
     @Operation(summary = "Pre-book reservation (hold)")
-    public ResponseEntity<ApiResponse<ReservationResponse>> preBook(@Valid @RequestBody ReservationPreBookRequest request) {
-        Reservation reservation = reservationService.preBook(
-                request.getUserId(),
-                request.getRoomTypeId(),
-                request.getCheckInDate(),
-                request.getCheckOutDate(),
-                request.getRoomsRequired(),
-                request.getMealPlanId());
+    public ResponseEntity<ApiResponse<ReservationResponse>> preBook(@Valid @RequestBody ReservationRequest request) {
+        Reservation reservation = reservationService.preBook(request);
         return ResponseEntity.ok(ApiResponse.<ReservationResponse>builder()
                 .success(true)
                 .message("Reservation pre-booked successfully")
@@ -73,25 +71,43 @@ public class ReservationController {
     }
 
     private ReservationResponse toResponse(Reservation reservation) {
-        ReservationResponse response = ReservationResponse.builder()
-                .id(reservation.getId())
+        List<ReservationItem> items = reservationService.getReservationItems(reservation.getId());
+        List<ReservationItemResponse> itemResponses = items.stream()
+                .map(this::toItemResponse)
+                .toList();
+
+        return ReservationResponse.builder()
+                .reservationId(reservation.getId())
                 .userId(reservation.getUserId())
                 .hotelId(reservation.getHotelId())
-                .roomTypeId(reservation.getRoomTypeId())
-                .checkInDate(reservation.getCheckInDate())
-                .checkOutDate(reservation.getCheckOutDate())
-                .roomsBooked(reservation.getRoomsBooked())
+                .items(itemResponses)
                 .totalPrice(reservation.getTotalPrice())
                 .status(reservation.getStatus())
                 .holdExpiryTime(reservation.getHoldExpiryTime())
                 .createdAt(reservation.getCreatedAt())
                 .updatedAt(reservation.getUpdatedAt())
                 .build();
+    }
 
-        if (reservation.getMealPlanId() != null) {
-            MealPlan mealPlan = mealPlanService.getMealPlan(reservation.getMealPlanId());
+    private ReservationItemResponse toItemResponse(ReservationItem item) {
+        ReservationItemResponse response = ReservationItemResponse.builder()
+                .roomTypeId(item.getRoomTypeId())
+                .roomsBooked(item.getRoomsBooked())
+                .checkInDate(item.getCheckInDate())
+                .checkOutDate(item.getCheckOutDate())
+                .mealPlanId(item.getMealPlanId())
+                .roomPrice(item.getRoomPrice())
+                .mealPrice(item.getMealPrice())
+                .totalPrice(item.getTotalPrice())
+                .build();
+
+        if (item.getMealPlanId() != null) {
+            MealPlan mealPlan = mealPlanService.getMealPlan(item.getMealPlanId());
             response.setMealPlanName(mealPlan.getName().name());
             response.setMealPlanPricePerDay(mealPlan.getPricePerDay());
+        } else {
+            response.setMealPlanName(MealPlanName.ROOM_ONLY.name());
+            response.setMealPlanPricePerDay(0.0);
         }
 
         return response;

@@ -15,6 +15,7 @@ public interface RoomAvailabilityRepository extends JpaRepository<RoomAvailabili
     List<RoomAvailability> findByRoomTypeIdOrderByDateAsc(Long roomTypeId);
     List<RoomAvailability> findByRoomTypeIdAndDateBetween(Long roomTypeId, LocalDate startDate, LocalDate endDate);
     Optional<RoomAvailability> findByRoomTypeIdAndDate(Long roomTypeId, LocalDate date);
+    List<RoomAvailability> findByRoomTypeIdInOrderByDateAsc(List<Long> roomTypeIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from RoomAvailability r " +

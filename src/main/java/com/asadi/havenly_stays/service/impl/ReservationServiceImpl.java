@@ -1,8 +1,11 @@
 package com.asadi.havenly_stays.service.impl;
 
+import com.asadi.havenly_stays.dto.ReservationBookingItemRequest;
+import com.asadi.havenly_stays.dto.ReservationRequest;
 import com.asadi.havenly_stays.entity.Hotel;
 import com.asadi.havenly_stays.entity.MealPlan;
 import com.asadi.havenly_stays.entity.Reservation;
+import com.asadi.havenly_stays.entity.ReservationItem;
 import com.asadi.havenly_stays.entity.ReservationStatus;
 import com.asadi.havenly_stays.entity.RoomAvailability;
 import com.asadi.havenly_stays.entity.RoomType;
@@ -12,6 +15,7 @@ import com.asadi.havenly_stays.exception.ResourceNotFoundException;
 import com.asadi.havenly_stays.repository.HotelRepository;
 import com.asadi.havenly_stays.repository.MealPlanRepository;
 import com.asadi.havenly_stays.repository.ReservationRepository;
+import com.asadi.havenly_stays.repository.ReservationItemRepository;
 import com.asadi.havenly_stays.repository.RoomAvailabilityRepository;
 import com.asadi.havenly_stays.repository.RoomTypeRepository;
 import com.asadi.havenly_stays.repository.UserRepository;
@@ -38,70 +42,120 @@ public class ReservationServiceImpl implements ReservationService {
     private final HotelRepository hotelRepository;
     private final UserRepository userRepository;
     private final MealPlanRepository mealPlanRepository;
+    private final ReservationItemRepository reservationItemRepository;
 
     public ReservationServiceImpl(ReservationRepository reservationRepository,
                                   RoomAvailabilityRepository roomAvailabilityRepository,
                                   RoomTypeRepository roomTypeRepository,
                                   HotelRepository hotelRepository,
                                   UserRepository userRepository,
-                                  MealPlanRepository mealPlanRepository) {
+                                  MealPlanRepository mealPlanRepository,
+                                  ReservationItemRepository reservationItemRepository) {
         this.reservationRepository = reservationRepository;
         this.roomAvailabilityRepository = roomAvailabilityRepository;
         this.roomTypeRepository = roomTypeRepository;
         this.hotelRepository = hotelRepository;
         this.userRepository = userRepository;
         this.mealPlanRepository = mealPlanRepository;
+        this.reservationItemRepository = reservationItemRepository;
     }
 
     @Override
     @Transactional
-    public Reservation preBook(Long userId,
-                               Long roomTypeId,
-                               LocalDate checkInDate,
-                               LocalDate checkOutDate,
-                               Integer roomsRequired,
-                               Long mealPlanId) {
-        validatePreBookRequest(userId, roomTypeId, checkInDate, checkOutDate, roomsRequired, mealPlanId);
+    public Reservation preBook(ReservationRequest request) {
+        validatePreBookRequest(request);
 
-        User user = getUser(userId);
-        RoomType roomType = getRoomType(roomTypeId);
-        Hotel hotel = getHotel(roomType.getHotelId());
+        User user = getUser(request.getUserId());
+        Hotel hotel = getHotel(request.getHotelId());
 
-        List<RoomAvailability> availabilities = lockAvailabilities(roomTypeId, checkInDate, checkOutDate);
-        int totalNights = (int) ChronoUnit.DAYS.between(checkInDate, checkOutDate);
-        validateAvailability(availabilities, totalNights, roomsRequired);
+        List<ReservationItem> items = new java.util.ArrayList<>();
+        double totalPrice = 0.0;
+        double totalRoomPrice = 0.0;
+        double totalMealPrice = 0.0;
+        Integer totalRoomsBooked = 0;
+        Long primaryRoomTypeId = null;
+        Long primaryMealPlanId = null;
+        LocalDate earliestCheckIn = null;
+        LocalDate latestCheckOut = null;
 
-        double roomPrice = availabilities.stream()
-                .map(RoomAvailability::getPrice)
-                .filter(Objects::nonNull)
-                .mapToDouble(price -> price * roomsRequired)
-                .sum();
+        for (ReservationBookingItemRequest booking : request.getBookings()) {
+            RoomType roomType = getRoomType(booking.getRoomTypeId());
+            if (!hotel.getId().equals(roomType.getHotelId())) {
+                throw new ReservationException("Room type does not belong to the specified hotel");
+            }
 
-        MealPlan mealPlan = getActiveMealPlanForRoom(roomTypeId, mealPlanId);
-        double mealPlanPrice = mealPlan.getPricePerDay() * roomsRequired * totalNights;
-        Long selectedMealPlanId = mealPlan.getId();
+            List<RoomAvailability> availabilities = lockAvailabilities(
+                    booking.getRoomTypeId(), booking.getCheckInDate(), booking.getCheckOutDate());
+            int totalNights = (int) ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
+            validateAvailability(availabilities, totalNights, booking.getRoomsRequired());
 
-        double totalPrice = roomPrice + mealPlanPrice;
+            double roomPrice = calculateRoomPrice(availabilities, booking.getRoomsRequired());
+            double mealPrice = 0.0;
+            Long selectedMealPlanId = null;
 
-        availabilities.forEach(availability ->
-                availability.setAvailableRooms(availability.getAvailableRooms() - roomsRequired));
-        roomAvailabilityRepository.saveAll(availabilities);
+            if (booking.getMealPlanId() != null) {
+                MealPlan mealPlan = getActiveMealPlanForRoom(booking.getRoomTypeId(), booking.getMealPlanId());
+                mealPrice = calculateMealPrice(mealPlan.getPricePerDay(), booking.getRoomsRequired(), totalNights);
+                selectedMealPlanId = mealPlan.getId();
+            }
+
+            double itemTotal = roomPrice + mealPrice;
+            totalPrice += itemTotal;
+            totalRoomPrice += roomPrice;
+            totalMealPrice += mealPrice;
+            totalRoomsBooked += booking.getRoomsRequired();
+
+            if (primaryRoomTypeId == null) {
+                primaryRoomTypeId = roomType.getId();
+            }
+            if (primaryMealPlanId == null) {
+                primaryMealPlanId = selectedMealPlanId;
+            }
+            if (earliestCheckIn == null || booking.getCheckInDate().isBefore(earliestCheckIn)) {
+                earliestCheckIn = booking.getCheckInDate();
+            }
+            if (latestCheckOut == null || booking.getCheckOutDate().isAfter(latestCheckOut)) {
+                latestCheckOut = booking.getCheckOutDate();
+            }
+
+            availabilities.forEach(availability ->
+                    availability.setAvailableRooms(availability.getAvailableRooms() - booking.getRoomsRequired()));
+            roomAvailabilityRepository.saveAll(availabilities);
+
+            ReservationItem item = ReservationItem.builder()
+                    .roomTypeId(roomType.getId())
+                    .mealPlanId(selectedMealPlanId)
+                    .checkInDate(booking.getCheckInDate())
+                    .checkOutDate(booking.getCheckOutDate())
+                    .roomsBooked(booking.getRoomsRequired())
+                    .roomPrice(roomPrice)
+                    .mealPrice(mealPrice)
+                    .totalPrice(itemTotal)
+                    .build();
+            items.add(item);
+        }
 
         Reservation reservation = Reservation.builder()
                 .userId(user.getId())
                 .hotelId(hotel.getId())
-                .roomTypeId(roomType.getId())
-                .mealPlanId(selectedMealPlanId)
-                .checkInDate(checkInDate)
-                .checkOutDate(checkOutDate)
-                .roomsBooked(roomsRequired)
+                .roomTypeId(primaryRoomTypeId)
+                .mealPlanId(primaryMealPlanId)
+                .checkInDate(earliestCheckIn)
+                .checkOutDate(latestCheckOut)
+                .roomsBooked(totalRoomsBooked)
+                .roomPrice(totalRoomPrice)
+                .mealPrice(totalMealPrice)
                 .totalPrice(totalPrice)
                 .status(ReservationStatus.PRE_BOOK)
-                .holdExpiryTime(LocalDateTime.now().plusMinutes(15))
+                .holdExpiryTime(LocalDateTime.now().plusMinutes(30))
                 .build();
 
         Reservation saved = reservationRepository.save(reservation);
-        logger.info("Created reservation pre-book id={}, userId={}, roomTypeId={}", saved.getId(), userId, roomTypeId);
+        items.forEach(item -> item.setReservationId(saved.getId()));
+        reservationItemRepository.saveAll(items);
+
+        logger.info("Created reservation pre-book id={}, userId={}, hotelId={}, items={}",
+                saved.getId(), user.getId(), hotel.getId(), items.size());
         return saved;
     }
 
@@ -159,25 +213,32 @@ public class ReservationServiceImpl implements ReservationService {
         logger.info("Expired {} reservations", expired.size());
     }
 
-    private void validatePreBookRequest(Long userId,
-                                        Long roomTypeId,
-                                        LocalDate checkInDate,
-                                        LocalDate checkOutDate,
-                                        Integer roomsRequired,
-                                        Long mealPlanId) {
-        if (userId == null || roomTypeId == null || checkInDate == null || checkOutDate == null
-                || roomsRequired == null || mealPlanId == null) {
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReservationItem> getReservationItems(Long reservationId) {
+        return reservationItemRepository.findByReservationId(reservationId);
+    }
+
+    private void validatePreBookRequest(ReservationRequest request) {
+        if (request == null || request.getUserId() == null || request.getHotelId() == null
+                || request.getBookings() == null || request.getBookings().isEmpty()) {
             throw new ReservationException("Invalid pre-book request");
         }
-        if (!checkInDate.isBefore(checkOutDate)) {
-            throw new ReservationException("checkInDate must be before checkOutDate");
-        }
-        long days = ChronoUnit.DAYS.between(checkInDate, checkOutDate);
-        if (days > 30) {
-            throw new ReservationException("date range should not exceed 30 days");
-        }
-        if (roomsRequired <= 0) {
-            throw new ReservationException("roomsRequired must be greater than 0");
+        for (ReservationBookingItemRequest item : request.getBookings()) {
+            if (item.getRoomTypeId() == null || item.getRoomsRequired() == null
+                    || item.getCheckInDate() == null || item.getCheckOutDate() == null) {
+                throw new ReservationException("Invalid booking item in request");
+            }
+            if (!item.getCheckInDate().isBefore(item.getCheckOutDate())) {
+                throw new ReservationException("checkInDate must be before checkOutDate");
+            }
+            long days = ChronoUnit.DAYS.between(item.getCheckInDate(), item.getCheckOutDate());
+            if (days > 30) {
+                throw new ReservationException("date range should not exceed 30 days");
+            }
+            if (item.getRoomsRequired() <= 0) {
+                throw new ReservationException("roomsRequired must be greater than 0");
+            }
         }
     }
 
@@ -213,14 +274,35 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     private void restoreInventory(Reservation reservation) {
-        List<RoomAvailability> availabilities = lockAvailabilities(
-                reservation.getRoomTypeId(), reservation.getCheckInDate(), reservation.getCheckOutDate());
-        int totalNights = (int) ChronoUnit.DAYS.between(reservation.getCheckInDate(), reservation.getCheckOutDate());
-        validateAvailability(availabilities, totalNights, 0);
+        List<ReservationItem> items = reservationItemRepository.findByReservationId(reservation.getId());
+        if (items.isEmpty()) {
+            throw new ReservationException("No reservation items found: " + reservation.getId());
+        }
+        for (ReservationItem item : items) {
+            List<RoomAvailability> availabilities = lockAvailabilities(
+                    item.getRoomTypeId(), item.getCheckInDate(), item.getCheckOutDate());
+            int totalNights = (int) ChronoUnit.DAYS.between(item.getCheckInDate(), item.getCheckOutDate());
+            if (availabilities == null || availabilities.isEmpty()) {
+                throw new ReservationException("No availability found to restore for reservation: " + reservation.getId());
+            }
+            long distinctDates = availabilities.stream()
+                    .map(RoomAvailability::getDate)
+                    .distinct()
+                    .count();
+            if (distinctDates != totalNights) {
+                logger.warn("Reservation {} item restore mismatch: expected {} dates but found {}",
+                        reservation.getId(), totalNights, distinctDates);
+            }
 
-        availabilities.forEach(availability ->
-                availability.setAvailableRooms(availability.getAvailableRooms() + reservation.getRoomsBooked()));
-        roomAvailabilityRepository.saveAll(availabilities);
+            availabilities.forEach(availability -> {
+                Integer current = availability.getAvailableRooms();
+                if (current == null) {
+                    current = 0;
+                }
+                availability.setAvailableRooms(current + item.getRoomsBooked());
+            });
+            roomAvailabilityRepository.saveAll(availabilities);
+        }
     }
 
     private void expireSingleReservation(Reservation reservation) {
@@ -260,5 +342,17 @@ public class ReservationServiceImpl implements ReservationService {
             throw new ReservationException("Meal plan is not active");
         }
         return mealPlan;
+    }
+
+    private double calculateRoomPrice(List<RoomAvailability> availabilities, int roomsRequired) {
+        return availabilities.stream()
+                .map(RoomAvailability::getPrice)
+                .filter(Objects::nonNull)
+                .mapToDouble(price -> price * roomsRequired)
+                .sum();
+    }
+
+    private double calculateMealPrice(double pricePerDay, int roomsRequired, int totalNights) {
+        return pricePerDay * roomsRequired * totalNights;
     }
 }

@@ -2,8 +2,6 @@ package com.asadi.havenly_stays.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -19,23 +17,20 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "reservations")
+@Table(name = "reservation_items")
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Reservation {
+public class ReservationItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private Long userId;
-
-    @Column(nullable = false)
-    private Long hotelId;
+    private Long reservationId;
 
     @Column(nullable = false)
     private Long roomTypeId;
@@ -51,18 +46,14 @@ public class Reservation {
     @Column(nullable = false)
     private Integer roomsBooked;
 
+    @Column(nullable = false)
     private Double roomPrice;
 
+    @Column(nullable = false)
     private Double mealPrice;
 
     @Column(nullable = false)
     private Double totalPrice;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ReservationStatus status;
-
-    private LocalDateTime holdExpiryTime;
 
     private LocalDateTime createdAt;
 

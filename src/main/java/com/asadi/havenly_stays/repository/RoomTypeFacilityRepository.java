@@ -6,5 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RoomTypeFacilityRepository extends JpaRepository<RoomTypeFacility, Long> {
     List<RoomTypeFacility> findByRoomTypeId(Long roomTypeId);
+    List<RoomTypeFacility> findByRoomTypeIdIn(List<Long> roomTypeIds);
     void deleteByRoomTypeId(Long roomTypeId);
 }

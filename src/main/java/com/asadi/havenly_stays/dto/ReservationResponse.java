@@ -1,9 +1,8 @@
 package com.asadi.havenly_stays.dto;
 
 import com.asadi.havenly_stays.entity.ReservationStatus;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,20 +15,10 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReservationResponse {
-    private Long id;
+    private Long reservationId;
     private Long userId;
     private Long hotelId;
-    private Long roomTypeId;
-    private String mealPlanName;
-    private Double mealPlanPricePerDay;
-
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    private LocalDate checkInDate;
-
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    private LocalDate checkOutDate;
-
-    private Integer roomsBooked;
+    private List<ReservationItemResponse> items;
     private Double totalPrice;
     private ReservationStatus status;
     private LocalDateTime holdExpiryTime;

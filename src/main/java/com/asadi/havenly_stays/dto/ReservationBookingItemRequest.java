@@ -17,15 +17,14 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReservationPreBookRequest {
-
-    @NotNull(message = "userId is required")
-    private Long userId;
+public class ReservationBookingItemRequest {
 
     @NotNull(message = "roomTypeId is required")
     private Long roomTypeId;
 
-    private Long mealPlanId;
+    @NotNull(message = "roomsRequired is required")
+    @Min(value = 1, message = "roomsRequired must be greater than 0")
+    private Integer roomsRequired;
 
     @NotNull(message = "checkInDate is required")
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -35,9 +34,7 @@ public class ReservationPreBookRequest {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate checkOutDate;
 
-    @NotNull(message = "roomsRequired is required")
-    @Min(value = 1, message = "roomsRequired must be greater than 0")
-    private Integer roomsRequired;
+    private Long mealPlanId;
 
     @AssertTrue(message = "checkInDate must be before checkOutDate")
     public boolean isCheckInBeforeCheckOut() {
