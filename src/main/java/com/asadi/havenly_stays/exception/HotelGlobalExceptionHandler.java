@@ -44,4 +44,14 @@ public class HotelGlobalExceptionHandler {
                         .data(null)
                         .build());
     }
+
+    @ExceptionHandler(ReservationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleReservationException(ReservationException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .data(null)
+                        .build());
+    }
 }
