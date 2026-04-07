@@ -68,7 +68,8 @@ public class AuthController {
                                         "accessToken": "eyJ...",
                                         "refreshToken": "6b6ebf1a-21d9-4022-bb5a-8a4f9e31e986",
                                         "tokenType": "Bearer",
-                                        "expiresIn": 900
+                                        "expiresIn": 900,
+                                        "role": "USER"
                                       }
                                     }
                                     """)
@@ -106,7 +107,8 @@ public class AuthController {
                                         "accessToken": "eyJ...",
                                         "refreshToken": "6b6ebf1a-21d9-4022-bb5a-8a4f9e31e986",
                                         "tokenType": "Bearer",
-                                        "expiresIn": 900
+                                        "expiresIn": 900,
+                                        "role": "USER"
                                       }
                                     }
                                     """)

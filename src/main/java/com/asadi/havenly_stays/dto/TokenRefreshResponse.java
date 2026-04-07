@@ -17,4 +17,5 @@ public class TokenRefreshResponse {
     private String refreshToken;
     private String tokenType;
     private long expiresIn;
+    private String role;
 }

@@ -80,6 +80,7 @@ public class AuthServiceImpl implements AuthService {
 
         String accessToken = refreshTokenService.generateNewAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+        String role = resolvePrimaryRole(user);
         log.info("security_event=login_success email={}", user.getEmail());
 
         return TokenRefreshResponse.builder()
@@ -87,6 +88,7 @@ public class AuthServiceImpl implements AuthService {
                 .refreshToken(refreshToken.getToken())
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getAccessExpirationSeconds())
+                .role(role)
                 .build();
     }
 
@@ -98,6 +100,7 @@ public class AuthServiceImpl implements AuthService {
         RefreshToken validToken = refreshTokenService.verifyExpiration(refreshToken);
         User user = validToken.getUser();
         String newAccessToken = refreshTokenService.generateNewAccessToken(user);
+        String role = resolvePrimaryRole(user);
         log.info("security_event=token_refreshed email={}", user.getEmail());
 
         return TokenRefreshResponse.builder()
@@ -105,6 +108,7 @@ public class AuthServiceImpl implements AuthService {
                 .refreshToken(validToken.getToken())
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getAccessExpirationSeconds())
+                .role(role)
                 .build();
     }
 
@@ -117,5 +121,31 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenService.findByToken(request.getRefreshToken())
                 .ifPresent(token -> refreshTokenService.deleteByUser(token.getUser()));
         log.info("security_event=logout_success");
+    }
+
+    private String resolvePrimaryRole(User user) {
+        if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+            return null;
+        }
+
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName() == RoleName.ROLE_ADMIN);
+        if (isAdmin) {
+            return "ADMIN";
+        }
+
+        boolean isUser = user.getRoles().stream()
+                .anyMatch(role -> role.getName() == RoleName.ROLE_USER);
+        if (isUser) {
+            return "USER";
+        }
+
+        return user.getRoles().stream()
+                .map(Role::getName)
+                .filter(roleName -> roleName != null)
+                .map(RoleName::name)
+                .findFirst()
+                .map(name -> name.startsWith("ROLE_") ? name.substring("ROLE_".length()) : name)
+                .orElse(null);
     }
 }
